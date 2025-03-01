@@ -398,12 +398,11 @@ def process_dump(input_file, template_file, out_file, file_size, file_compress,
         logging.info("Loaded %d templates in %.1fs", templates, template_load_elapsed)
 
     if out_file == '-':
-        output = sys.stdout
+        output = None
         if file_compress:
             logging.warn("writing to stdout, so no output compression (use an external tool)")
     else:
-        nextFile = NextFile(out_file)
-        output = OutputSplitter(nextFile, file_size, file_compress)
+        output = (out_file, file_size, file_compress) # change the output parameter from a stream to a triple tuple
 
     # process pages
     logging.info("Starting page extraction from %s.", input_file)
@@ -462,8 +461,6 @@ def process_dump(input_file, template_file, out_file, file_size, file_compress,
     # wait for it to finish
     reduce.join()
 
-    if output != sys.stdout:
-        output.close()
     extract_duration = default_timer() - extract_start
     extract_rate = ordinal / extract_duration
     logging.info("Finished %d-process extraction of %d articles in %.1fs (%.1f art/s)",
@@ -492,13 +489,19 @@ def extract_process(jobs_queue, output_queue, html_safe):
             break
 
 
-def reduce_process(output_queue, output):
+def reduce_process(output_queue, output_file=None):
     """
     Pull finished article text, write series of files (or stdout)
     :param output_queue: text to be output.
     :param output: file object where to print.
     """
 
+    if output_file is None: # changed output_file argument to a triple tuple
+        output = sys.stdout
+    else:
+        nextFile, file_size, file_compress = output_file
+        output = OutputSplitter(NextFile(nextFile), file_size, file_compress)
+        
     interval_start = default_timer()
     period = 100000
     # FIXME: use a heap
@@ -522,6 +525,8 @@ def reduce_process(output_queue, output):
             ordinal, text = pair
             ordering_buffer[ordinal] = text
 
+    if output != sys.stdout:
+        output.close()
 
 # ----------------------------------------------------------------------
 
